@@ -1,0 +1,271 @@
+
+#include <SFML/Graphics.hpp>
+#include <algorithm>
+#include <string>
+#include <vector>
+#include <random>
+#include <sstream>
+
+struct TrafficCar {
+    sf::RectangleShape body;
+    float speed;
+};
+
+int main() {
+    const int W = 800;
+    const int H = 700;
+
+    sf::RenderWindow window(
+        sf::VideoMode(W, H),
+        "Turbo Racer - C++",
+        sf::Style::Titlebar | sf::Style::Close
+    );
+
+    window.setFramerateLimit(60);
+
+    sf::Color grass(28, 110, 55);
+    sf::Color road(48, 48, 54);
+    sf::Color blue(35, 145, 255);
+    sf::Color red(240, 55, 65);
+
+    const float roadLeft = 180.f;
+    const float roadWidth = 440.f;
+    const float carW = 48.f;
+    const float carH = 82.f;
+
+    sf::RectangleShape roadShape(
+        sf::Vector2f(roadWidth, static_cast<float>(H))
+    );
+    roadShape.setPosition(roadLeft, 0);
+    roadShape.setFillColor(road);
+
+    sf::RectangleShape leftEdge(sf::Vector2f(8, H));
+    leftEdge.setPosition(roadLeft, 0);
+    leftEdge.setFillColor(sf::Color::White);
+
+    sf::RectangleShape rightEdge(sf::Vector2f(8, H));
+    rightEdge.setPosition(roadLeft + roadWidth - 8, 0);
+    rightEdge.setFillColor(sf::Color::White);
+
+    sf::RectangleShape player(sf::Vector2f(carW, carH));
+    player.setFillColor(blue);
+    player.setOutlineColor(sf::Color::White);
+    player.setOutlineThickness(2);
+    player.setPosition(W / 2.f - carW / 2.f, H - 130.f);
+
+    std::vector<sf::RectangleShape> laneLines;
+    for (int i = 0; i < 12; ++i) {
+        sf::RectangleShape line(sf::Vector2f(8, 42));
+        line.setFillColor(sf::Color(235, 235, 235));
+        line.setPosition(320, i * 70.f);
+        laneLines.push_back(line);
+
+        sf::RectangleShape line2(sf::Vector2f(8, 42));
+        line2.setFillColor(sf::Color(235, 235, 235));
+        line2.setPosition(470, i * 70.f);
+        laneLines.push_back(line2);
+    }
+
+    std::vector<TrafficCar> traffic;
+
+    std::mt19937 rng(std::random_device{}());
+    std::uniform_int_distribution<int> laneDist(0, 2);
+    std::uniform_real_distribution<float> speedDist(170.f, 260.f);
+
+    sf::Clock clock;
+    sf::Clock spawnClock;
+
+    float roadOffset = 0;
+    float speed = 300.f;
+    float score = 0;
+    int health = 3;
+
+    bool paused = false;
+    bool gameOver = false;
+
+    // SFML's default font is not guaranteed to exist.
+    // Load a local font file for the HUD.
+    sf::Font font;
+    bool fontLoaded = font.loadFromFile("arial.ttf");
+
+    sf::Text hud;
+    if (fontLoaded) {
+        hud.setFont(font);
+        hud.setCharacterSize(23);
+        hud.setFillColor(sf::Color::White);
+    }
+
+    auto resetGame = [&]() {
+        player.setPosition(W / 2.f - carW / 2.f, H - 130.f);
+        traffic.clear();
+        score = 0;
+        speed = 300.f;
+        health = 3;
+        roadOffset = 0;
+        paused = false;
+        gameOver = false;
+        spawnClock.restart();
+    };
+
+    while (window.isOpen()) {
+        float dt = std::min(clock.restart().asSeconds(), 0.05f);
+
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed)
+                window.close();
+
+            if (event.type == sf::Event::KeyPressed) {
+                if (event.key.code == sf::Keyboard::Escape)
+                    window.close();
+
+                if (event.key.code == sf::Keyboard::P &&
+                    !gameOver)
+                    paused = !paused;
+
+                if (event.key.code == sf::Keyboard::R)
+                    resetGame();
+
+                if (event.key.code == sf::Keyboard::Enter &&
+                    gameOver)
+                    resetGame();
+            }
+        }
+
+        if (!paused && !gameOver) {
+            score += dt * speed * 0.05f;
+            speed = std::min(650.f, 300.f + score * 0.15f);
+
+            float steering = 300.f * dt;
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left) ||
+                sf::Keyboard::isKeyPressed(sf::Keyboard::A))
+                player.move(-steering, 0);
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right) ||
+                sf::Keyboard::isKeyPressed(sf::Keyboard::D))
+                player.move(steering, 0);
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up) ||
+                sf::Keyboard::isKeyPressed(sf::Keyboard::W))
+                player.move(0, -steering);
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down) ||
+                sf::Keyboard::isKeyPressed(sf::Keyboard::S))
+                player.move(0, steering);
+
+            sf::Vector2f pp = player.getPosition();
+            pp.x = std::clamp(
+                pp.x,
+                roadLeft + 12.f,
+                roadLeft + roadWidth - carW - 12.f
+            );
+            pp.y = std::clamp(pp.y, 15.f, H - carH - 15.f);
+            player.setPosition(pp);
+
+            roadOffset += speed * dt;
+            if (roadOffset >= 112.f)
+                roadOffset -= 112.f;
+
+            for (auto& line : laneLines) {
+                float y = line.getPosition().y + speed * dt;
+                if (y > H)
+                    y -= H + 45.f;
+                line.setPosition(line.getPosition().x, y);
+            }
+
+            if (spawnClock.getElapsedTime().asSeconds() > 0.85f) {
+                int lane = laneDist(rng);
+                float laneX = roadLeft + 65.f + lane * 145.f;
+
+                TrafficCar enemy;
+                enemy.body.setSize(sf::Vector2f(carW, carH));
+                enemy.body.setFillColor(red);
+                enemy.body.setOutlineColor(sf::Color::White);
+                enemy.body.setOutlineThickness(2);
+                enemy.body.setPosition(laneX, -carH - 10.f);
+                enemy.speed = speedDist(rng);
+
+                traffic.push_back(enemy);
+                spawnClock.restart();
+            }
+
+            for (auto& enemy : traffic) {
+                enemy.body.move(
+                    0,
+                    (speed + enemy.speed) * dt * 0.55f
+                );
+
+                if (enemy.body.getGlobalBounds().intersects(
+                        player.getGlobalBounds())) {
+                    enemy.body.setPosition(-200.f, H + 200.f);
+                    --health;
+
+                    if (health <= 0)
+                        gameOver = true;
+                }
+            }
+
+            traffic.erase(
+                std::remove_if(
+                    traffic.begin(), traffic.end(),
+                    [H](const TrafficCar& c) {
+                        return c.body.getPosition().y > H + 100;
+                    }
+                ),
+                traffic.end()
+            );
+        }
+
+        window.clear(grass);
+        window.draw(roadShape);
+        window.draw(leftEdge);
+        window.draw(rightEdge);
+
+        for (const auto& line : laneLines)
+            window.draw(line);
+
+        for (const auto& enemy : traffic)
+            window.draw(enemy.body);
+
+        window.draw(player);
+
+        if (fontLoaded) {
+            std::ostringstream info;
+            info << "SCORE: " << static_cast<int>(score)
+                 << "     SPEED: " << static_cast<int>(speed)
+                 << "     HEALTH: " << health
+                 << "     P = PAUSE";
+
+            hud.setString(info.str());
+            hud.setPosition(15, 15);
+            window.draw(hud);
+
+            if (paused || gameOver) {
+                sf::RectangleShape overlay(sf::Vector2f(W, H));
+                overlay.setFillColor(sf::Color(0, 0, 0, 185));
+                window.draw(overlay);
+
+                sf::Text message;
+                message.setFont(font);
+                message.setCharacterSize(38);
+                message.setFillColor(sf::Color::White);
+                message.setStyle(sf::Text::Bold);
+
+                if (gameOver)
+                    message.setString(
+                        "GAME OVER\nPress R or ENTER to restart"
+                    );
+                else
+                    message.setString("PAUSED\nPress P to resume");
+
+                message.setPosition(105, 285);
+                window.draw(message);
+            }
+        }
+
+        window.display();
+    }
+
+    return 0;
+}
