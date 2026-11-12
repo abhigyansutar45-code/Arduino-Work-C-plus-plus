@@ -1,4 +1,4 @@
-## ⚡ Arduino & C++ Programming Repository
+# ⚡ Arduino & C++ Programming Repository
 
 <h1 align="center">⚡ ARDUINO × C++</h1>
 
