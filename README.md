@@ -1,7 +1,6 @@
 <H1 align="center">⚡ Arduino & C++ Programming Repository
 
-<h1
-  2align="center">⚡ ARDUINO × C++</h1>
+<h1 align="center">⚡ ARDUINO × C++</h1>
 
 <h3 align="center">🚀 Exploring Embedded Systems, Electronics & Programming</h3>
 
